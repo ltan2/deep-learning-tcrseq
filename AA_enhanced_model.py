@@ -29,11 +29,35 @@ test_CDR3.columns = ['sequence', 'label']
 aa_index = pd.read_csv("AAidx_PCA.txt", sep='\t')
 total_aa = aa_index.iloc[:, 0].tolist()
 
+for cdr3_sequence in train_CDR3['sequence']:
+    vec_mean = []
+    # Generate feature vector by averaging PCA values for the sequence
+    feature_vector = np.array([aa_index.loc[aa].values for aa in cdr3_sequence if aa in aa_index.index])
+    feature_vector_mean = feature_vector.mean(axis=0)
+    vec_mean.append(feature_vector_mean)
+    train_vec_means = np.array(vec_mean) 
+
+for cdr3_sequence in test_CDR3['sequence']:
+    vec_mean = []
+    # Generate feature vector by averaging PCA values for the sequence
+    feature_vector = np.array([aa_index.loc[aa].values for aa in cdr3_sequence if aa in aa_index.index])
+    feature_vector_mean = feature_vector.mean(axis=0)
+    vec_mean.append(feature_vector_mean)
+    test_vec_means = np.array(vec_mean) 
 
 # # Encode Training and Testing Data
 # representing sequence as a matrix for cnn
 train_data_encoded = np.array([encode_one_cdr3(seq, total_aa) for seq in train_CDR3['sequence']])
 test_data_encoded = np.array([encode_one_cdr3(seq, total_aa) for seq in test_CDR3['sequence']])
+
+# Flatten the CNN-encoded matrices
+train_data_flattened = np.array([seq.flatten() for seq in train_data_encoded])
+test_data_flattened = np.array([seq.flatten() for seq in test_data_encoded])
+
+# Concatenate sequence features and AA features
+train_combined_features = np.hstack((train_data_flattened, train_vec_means))
+test_combined_features = np.hstack((test_data_flattened, test_vec_means))  # Create test_vec_means similarly
+
 
 # build CNN mode;
 def build_model(input_data):
@@ -49,10 +73,10 @@ def build_model(input_data):
 
 
 # Step 5: Train the Model
-model = build_model(train_data_encoded)
+model = build_model(train_combined_features.shape[1])
 
 x_train_partial, x_val, y_train_partial, y_val = train_test_split(
-    train_data_encoded, 
+    train_combined_features, 
     train_CDR3['label'].values, 
     test_size=35000, 
     random_state=123,  # For reproducibility
