@@ -4,10 +4,8 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
-from tensorflow.keras.utils import to_categorical
-import matplotlib.pyplot as plt
 from one_hot_encoding import encode_one_cdr3
-from tensorflow.keras.optimizers import Adam
+from plot import plot_graph
 from sklearn.model_selection import train_test_split
 
 
@@ -26,24 +24,23 @@ test_CDR3['label'] = [0] * len(normal_CDR3_test) + [1] * len(cancer_CDR3_test)
 test_CDR3.columns = ['sequence', 'label']
 
 # get AA for AA index
-aa_index = pd.read_csv("AAidx_PCA.txt", sep='\t')
+aa_index = pd.read_csv("AAidx_PCA.txt", sep='\t', skiprows=1)
 total_aa = aa_index.iloc[:, 0].tolist()
-
 
 # # Encode Training and Testing Data
 # representing sequence as a matrix for cnn
 train_data_encoded = np.array([encode_one_cdr3(seq, total_aa) for seq in train_CDR3['sequence']])
 test_data_encoded = np.array([encode_one_cdr3(seq, total_aa) for seq in test_CDR3['sequence']])
 
-# build CNN mode;
+
+# build CNN model
 def build_model(input_data):
     model = Sequential([
-        Dense(16, activation="relu", input_shape=(input_data.shape[1],)),
-        Dense(16, activation="relu"),
+        Dense(16, activation="relu", input_shape=(20 * 12,)),
         Dense(16, activation="relu"),
         Dense(1, activation="sigmoid")
     ])
-    model.compile(optimizer=Adam(learning_rate=0.01), loss="binary_crossentropy", metrics=["accuracy"])
+    model.compile(optimizer="rmsprop", loss="binary_crossentropy", metrics=["accuracy"])
 
     return model
 
@@ -75,9 +72,4 @@ results = model.evaluate(test_data_encoded, test_CDR3['label'].values)
 print(f"Test Loss: {results[0]}, Test Accuracy: {results[1]}")
 
 # Visualization of Training
-plt.plot(history.history['accuracy'], label='Training Accuracy')
-plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
-plt.xlabel('Epochs')
-plt.ylabel('Accuracy')
-plt.legend()
-plt.show()
+plot_graph(history, "base-model-loss-acc-train.png")

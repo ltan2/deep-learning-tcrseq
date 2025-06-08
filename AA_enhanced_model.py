@@ -6,7 +6,7 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.utils import to_categorical
 import matplotlib.pyplot as plt
-from one_hot_encoding import encode_one_cdr3
+from one_hot_encoding import enhanced_encode_one_cdr3
 from tensorflow.keras.optimizers import Adam
 from sklearn.model_selection import train_test_split
 
@@ -26,76 +26,42 @@ test_CDR3['label'] = [0] * len(normal_CDR3_test) + [1] * len(cancer_CDR3_test)
 test_CDR3.columns = ['sequence', 'label']
 
 # get AA for AA index
-aa_index = pd.read_csv("AAidx_PCA.txt", sep='\t')
-total_aa = aa_index.iloc[:, 0].tolist()
-
-for cdr3_sequence in train_CDR3['sequence']:
-    vec_mean = []
-    # Generate feature vector by averaging PCA values for the sequence
-    feature_vector = np.array([aa_index.loc[aa].values for aa in cdr3_sequence if aa in aa_index.index])
-    feature_vector_mean = feature_vector.mean(axis=0)
-    vec_mean.append(feature_vector_mean)
-    train_vec_means = np.array(vec_mean) 
-
-for cdr3_sequence in test_CDR3['sequence']:
-    vec_mean = []
-    # Generate feature vector by averaging PCA values for the sequence
-    feature_vector = np.array([aa_index.loc[aa].values for aa in cdr3_sequence if aa in aa_index.index])
-    feature_vector_mean = feature_vector.mean(axis=0)
-    vec_mean.append(feature_vector_mean)
-    test_vec_means = np.array(vec_mean) 
+pca_data = pd.read_csv("AAidx_PCA.txt", sep='\t', skiprows=1)
+total_aa = pca_data.iloc[:, 0].tolist()
+pca_data.set_index(pca_data.columns[0], inplace=True)
 
 # # Encode Training and Testing Data
 # representing sequence as a matrix for cnn
-train_data_encoded = np.array([encode_one_cdr3(seq, total_aa) for seq in train_CDR3['sequence']])
-test_data_encoded = np.array([encode_one_cdr3(seq, total_aa) for seq in test_CDR3['sequence']])
+train_encoded = np.array([
+    enhanced_encode_one_cdr3(seq, total_aa, pca_data) for seq in train_CDR3['sequence']
+])
+test_encoded = np.array([
+    enhanced_encode_one_cdr3(seq, total_aa, pca_data) for seq in test_CDR3['sequence']
+])
 
-# Flatten the CNN-encoded matrices
-train_data_flattened = np.array([seq.flatten() for seq in train_data_encoded])
-test_data_flattened = np.array([seq.flatten() for seq in test_data_encoded])
-
-# Concatenate sequence features and AA features
-train_combined_features = np.hstack((train_data_flattened, train_vec_means))
-test_combined_features = np.hstack((test_data_flattened, test_vec_means))  # Create test_vec_means similarly
-
-
-# build CNN mode;
-def build_model(input_data):
+def build_model(input_dim):
     model = Sequential([
-        Dense(16, activation="relu", input_shape=(input_data.shape[1],)),
-        Dense(16, activation="relu"),
+        Dense(64, activation="relu", input_shape=(input_dim,)),
+        Dense(32, activation="relu"),
         Dense(16, activation="relu"),
         Dense(1, activation="sigmoid")
     ])
-    model.compile(optimizer=Adam(learning_rate=0.01), loss="binary_crossentropy", metrics=["accuracy"])
-
+    model.compile(optimizer="rmsprop", loss="binary_crossentropy", metrics=["accuracy"])
     return model
 
-
-# Step 5: Train the Model
-model = build_model(train_combined_features.shape[1])
-
-x_train_partial, x_val, y_train_partial, y_val = train_test_split(
-    train_combined_features, 
-    train_CDR3['label'].values, 
-    test_size=35000, 
-    random_state=123,  # For reproducibility
-    shuffle=True,      # Ensures shuffling
-    stratify=train_CDR3['label'].values  # Maintain class balance
+# Split Training Data
+x_train, x_val, y_train, y_val = train_test_split(
+    train_encoded, train_CDR3['label'].values, test_size=0.2, random_state=123, stratify=train_CDR3['label'].values
 )
 
-# Model training
+# Train Model
+model = build_model(x_train.shape[1])
 history = model.fit(
-    x_train_partial,
-    y_train_partial,
-    epochs=20,
-    batch_size=512,
-    validation_data=(x_val, y_val)
+    x_train, y_train, epochs=20, batch_size=512, validation_data=(x_val, y_val)
 )
 
-
-# Evaluate the Model
-results = model.evaluate(test_data_encoded, test_CDR3['label'].values)
+# Evaluate Model
+results = model.evaluate(test_encoded, test_CDR3['label'].values)
 print(f"Test Loss: {results[0]}, Test Accuracy: {results[1]}")
 
 # Visualization of Training
